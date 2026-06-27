@@ -37,30 +37,8 @@ class FusionEngine(
      * @return true if this event triggered a rep validation
      */
     fun onSensorPeak(timestampMs: Long): Boolean {
-        // Cooldown check
-        if (timestampMs - lastValidationMs < cooldownMs) return false
-
-        return when (_state.value) {
-            RepState.IDLE -> {
-                // Sensor fires first — open validation window
-                _state.value = RepState.SENSOR_TRIGGERED
-                windowStartMs = timestampMs
-                false
-            }
-            RepState.POSE_TRIGGERED -> {
-                // Pose already fired — check if within window
-                if (timestampMs - windowStartMs <= windowDurationMs) {
-                    validateRep(timestampMs)
-                    true
-                } else {
-                    // Window expired, start fresh with sensor
-                    _state.value = RepState.SENSOR_TRIGGERED
-                    windowStartMs = timestampMs
-                    false
-                }
-            }
-            else -> false
-        }
+        // Motion sensor deactivated for now per user request
+        return false
     }
 
     /**
@@ -72,27 +50,9 @@ class FusionEngine(
         // Cooldown check
         if (timestampMs - lastValidationMs < cooldownMs) return false
 
-        return when (_state.value) {
-            RepState.IDLE -> {
-                // Pose fires first — open validation window
-                _state.value = RepState.POSE_TRIGGERED
-                windowStartMs = timestampMs
-                false
-            }
-            RepState.SENSOR_TRIGGERED -> {
-                // Sensor already fired — check if within window
-                if (timestampMs - windowStartMs <= windowDurationMs) {
-                    validateRep(timestampMs)
-                    true
-                } else {
-                    // Window expired, start fresh with pose
-                    _state.value = RepState.POSE_TRIGGERED
-                    windowStartMs = timestampMs
-                    false
-                }
-            }
-            else -> false
-        }
+        // Validate rep immediately without waiting for sensor peak
+        validateRep(timestampMs)
+        return true
     }
 
     /**
