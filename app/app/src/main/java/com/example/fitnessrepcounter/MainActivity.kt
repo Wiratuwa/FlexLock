@@ -8,11 +8,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import com.example.fitnessrepcounter.data.supabase.SupabaseRepository
 import com.example.fitnessrepcounter.theme.FitnessRepCounterTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    
+    // Sign in anonymously to Supabase so we have a user_id for RLS
+    lifecycleScope.launch {
+        val repo = SupabaseRepository()
+        repo.signInAnonymously()
+    }
 
     enableEdgeToEdge()
     setContent {

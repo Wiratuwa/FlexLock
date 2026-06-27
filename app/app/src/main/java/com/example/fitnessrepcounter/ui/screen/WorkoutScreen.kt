@@ -43,6 +43,9 @@ import com.example.fitnessrepcounter.domain.engine.ExerciseValidator
 import com.example.fitnessrepcounter.domain.engine.FusionEngine
 import com.example.fitnessrepcounter.domain.model.ExerciseType
 import com.example.fitnessrepcounter.domain.model.RepState
+import com.example.fitnessrepcounter.data.supabase.SupabaseRepository
+import com.example.fitnessrepcounter.data.supabase.models.RepLogDto
+import com.example.fitnessrepcounter.data.supabase.models.WorkoutSessionDto
 import com.example.fitnessrepcounter.theme.*
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
@@ -66,8 +69,10 @@ fun WorkoutScreen(
     var lastRepState by remember { mutableStateOf(RepState.IDLE) }
     var isSoftLocked by remember { mutableStateOf(false) }
     var showFinishDialog by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
     var currentPose by remember { mutableStateOf<Pose?>(null) }
     var poseConfidence by remember { mutableFloatStateOf(0f) }
+    val repLogs = remember { mutableStateListOf<RepLogDto>() }
 
     // ── Engines ──
     val fusionEngine = remember { FusionEngine() }
@@ -89,6 +94,17 @@ fun WorkoutScreen(
     LaunchedEffect(Unit) {
         fusionEngine.state.collectLatest { state ->
             lastRepState = state
+            if (state == RepState.VALIDATED) {
+                repLogs.add(
+                    RepLogDto(
+                        sessionId = "", // populated before save
+                        repNumber = fusionEngine.repCount.value,
+                        sensorPeakMagnitude = null,
+                        poseConfidence = poseConfidence,
+                        validationState = "VALIDATED"
+                    )
+                )
+            }
         }
     }
 
@@ -341,12 +357,26 @@ fun WorkoutScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showFinishDialog = false
-                        onFinish()
+                        isSaving = true
+                        scope.launch {
+                            val repo = SupabaseRepository()
+                            val session = WorkoutSessionDto(
+                                exerciseType = exerciseType.name,
+                                targetReps = 0, // Not explicitly tracked in this screen yet
+                                actualReps = repCount,
+                                setCount = 1,
+                                isCompleted = true
+                            )
+                            repo.saveWorkoutSession(session, repLogs)
+                            showFinishDialog = false
+                            isSaving = false
+                            onFinish()
+                        }
                     },
+                    enabled = !isSaving,
                     colors = ButtonDefaults.textButtonColors(contentColor = ElectricLime),
                 ) {
-                    Text("FINISH")
+                    Text(if (isSaving) "SAVING..." else "FINISH")
                 }
             },
             dismissButton = {

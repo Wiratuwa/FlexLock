@@ -96,4 +96,10 @@ dependencies {
 
   // Accompanist Permissions
   implementation(libs.accompanist.permissions)
+
+  // Supabase
+  implementation(libs.supabase.auth)
+  implementation(libs.supabase.postgrest)
+  implementation(libs.ktor.client.android)
+  implementation(libs.kotlinx.serialization.json)
 }

@@ -17,6 +17,9 @@ camerax = "1.5.0"
 cameraMlkit = "1.5.0-beta01"
 mlkitPose = "18.0.0-beta5"
 accompanistPermissions = "0.37.3"
+supabase = "3.0.0"
+ktor = "3.0.0"
+kotlinxSerialization = "1.6.3"
 
 
 [libraries]
@@ -56,6 +59,12 @@ mlkit-pose-detection-accurate = { module = "com.google.mlkit:pose-detection-accu
 
 # Accompanist Permissions
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
+
+# Supabase & Ktor
+supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt", version.ref = "supabase" }
+supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt", version.ref = "supabase" }
+ktor-client-android = { module = "io.ktor:ktor-client-android", version.ref = "ktor" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
