@@ -1,0 +1,15 @@
+# Gradle files
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Supabase
+supabase/.temp/
+
+# Exclude all APK files
+*.apk
+app/app/build/
+**/app/build/
