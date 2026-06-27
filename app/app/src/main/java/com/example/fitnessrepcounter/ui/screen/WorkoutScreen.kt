@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Stop
@@ -26,6 +27,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +46,7 @@ import com.example.fitnessrepcounter.domain.engine.ExerciseValidator
 import com.example.fitnessrepcounter.domain.engine.FusionEngine
 import com.example.fitnessrepcounter.domain.model.ExerciseType
 import com.example.fitnessrepcounter.domain.model.RepState
+import com.example.fitnessrepcounter.data.prefs.LockPreferences
 import com.example.fitnessrepcounter.data.supabase.SupabaseRepository
 import com.example.fitnessrepcounter.data.supabase.models.RepLogDto
 import com.example.fitnessrepcounter.data.supabase.models.WorkoutSessionDto
@@ -70,9 +74,14 @@ fun WorkoutScreen(
     var isSoftLocked by remember { mutableStateOf(false) }
     var showFinishDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var useFrontCamera by remember { mutableStateOf(true) }
     var currentPose by remember { mutableStateOf<Pose?>(null) }
     var poseConfidence by remember { mutableFloatStateOf(0f) }
     val repLogs = remember { mutableStateListOf<RepLogDto>() }
+
+    val lockPrefs = remember { LockPreferences(context) }
+    val isLockedToday = remember { mutableStateOf(lockPrefs.isLockedToday()) }
+    val dailyTarget = 10
 
     // ── Engines ──
     val fusionEngine = remember { FusionEngine() }
@@ -171,6 +180,7 @@ fun WorkoutScreen(
                 exerciseValidator = exerciseValidator,
                 fusionEngine = fusionEngine,
                 audioRepository = audioRepository,
+                useFrontCamera = useFrontCamera,
                 onPoseUpdate = { pose, confidence ->
                     currentPose = pose
                     poseConfidence = confidence
@@ -179,7 +189,7 @@ fun WorkoutScreen(
 
             // Pose skeleton overlay
             currentPose?.let { pose ->
-                PoseOverlay(pose = pose)
+                PoseOverlay(pose = pose, useFrontCamera = useFrontCamera)
             }
 
             // Status indicator top-left
@@ -244,6 +254,17 @@ fun WorkoutScreen(
                     letterSpacing = 6.sp,
                 ),
             )
+            
+            if (isLockedToday.value) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "TARGET: $dailyTarget",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        color = WarningAmber,
+                        letterSpacing = 2.sp,
+                    ),
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -289,11 +310,27 @@ fun WorkoutScreen(
                         contentDescription = if (isSoftLocked) "Unlock" else "Lock",
                     )
                 }
+                
+                // Camera toggle
+                FilledIconButton(
+                    onClick = { useFrontCamera = !useFrontCamera },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MidGray,
+                        contentColor = TextSecondary,
+                    ),
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cameraswitch,
+                        contentDescription = "Switch Camera",
+                    )
+                }
 
                 // Stop button
+                val canFinish = !isLockedToday.value || repCount >= dailyTarget
                 Button(
                     onClick = { showFinishDialog = true },
-                    enabled = !isSoftLocked,
+                    enabled = !isSoftLocked && canFinish,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MidGray,
                         contentColor = TextPrimary,
@@ -362,12 +399,24 @@ fun WorkoutScreen(
                             val repo = SupabaseRepository()
                             val session = WorkoutSessionDto(
                                 exerciseType = exerciseType.name,
-                                targetReps = 0, // Not explicitly tracked in this screen yet
+                                targetReps = if (isLockedToday.value) dailyTarget else 0,
                                 actualReps = repCount,
                                 setCount = 1,
                                 isCompleted = true
                             )
                             repo.saveWorkoutSession(session, repLogs)
+                            
+                            // Unlock logic
+                            if (isLockedToday.value && repCount >= dailyTarget) {
+                                lockPrefs.markCompleted()
+                                isLockedToday.value = false
+                                try {
+                                    (context as? android.app.Activity)?.stopLockTask()
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                            
                             showFinishDialog = false
                             isSaving = false
                             onFinish()
@@ -431,6 +480,7 @@ private fun WorkoutCameraPreview(
     exerciseValidator: ExerciseValidator,
     fusionEngine: FusionEngine,
     audioRepository: AudioRepository,
+    useFrontCamera: Boolean,
     onPoseUpdate: (Pose?, Float) -> Unit,
 ) {
     val context = LocalContext.current
@@ -506,10 +556,14 @@ private fun WorkoutCameraPreview(
                 }
 
                 try {
+                    val cameraSelector = CameraSelector.Builder()
+                        .requireLensFacing(if (useFrontCamera) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK)
+                        .build()
+                        
                     cameraProvider.unbindAll()
                     cameraProvider.bindToLifecycle(
                         lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        cameraSelector,
                         preview,
                         imageAnalysis,
                     )
@@ -525,7 +579,7 @@ private fun WorkoutCameraPreview(
 }
 
 @Composable
-private fun PoseOverlay(pose: Pose) {
+private fun PoseOverlay(pose: Pose, useFrontCamera: Boolean) {
     // Draw skeleton lines between connected landmarks
     val connections = remember {
         listOf(
@@ -550,37 +604,41 @@ private fun PoseOverlay(pose: Pose) {
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val scaleX = size.width
-        val scaleY = size.height
+        val drawAction: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit = {
+            // Draw connections
+            connections.forEach { (startType, endType) ->
+                val start = pose.getPoseLandmark(startType)
+                val end = pose.getPoseLandmark(endType)
+                if (start != null && end != null &&
+                    start.inFrameLikelihood > 0.5f && end.inFrameLikelihood > 0.5f
+                ) {
+                    drawLine(
+                        color = SkeletonLime,
+                        start = Offset(start.position.x, start.position.y),
+                        end = Offset(end.position.x, end.position.y),
+                        strokeWidth = 6f,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
 
-        // Draw connections
-        connections.forEach { (startType, endType) ->
-            val start = pose.getPoseLandmark(startType)
-            val end = pose.getPoseLandmark(endType)
-            if (start != null && end != null &&
-                start.inFrameLikelihood > 0.5f && end.inFrameLikelihood > 0.5f
-            ) {
-                // Normalize landmark positions (ML Kit returns pixel coordinates)
-                // These need to be scaled to the canvas size
-                drawLine(
-                    color = SkeletonLime,
-                    start = Offset(start.position.x, start.position.y),
-                    end = Offset(end.position.x, end.position.y),
-                    strokeWidth = 6f,
-                    cap = StrokeCap.Round,
-                )
+            // Draw landmark dots
+            pose.allPoseLandmarks.forEach { landmark ->
+                if (landmark.inFrameLikelihood > 0.5f) {
+                    drawCircle(
+                        color = ElectricLime,
+                        radius = 8f,
+                        center = Offset(landmark.position.x, landmark.position.y),
+                    )
+                }
             }
         }
 
-        // Draw landmark dots
-        pose.allPoseLandmarks.forEach { landmark ->
-            if (landmark.inFrameLikelihood > 0.5f) {
-                drawCircle(
-                    color = ElectricLime,
-                    radius = 8f,
-                    center = Offset(landmark.position.x, landmark.position.y),
-                )
-            }
+        if (useFrontCamera) {
+            // Mirror X axis around the center for front camera
+            scale(scaleX = -1f, scaleY = 1f, pivot = center, block = drawAction)
+        } else {
+            drawAction()
         }
     }
 }

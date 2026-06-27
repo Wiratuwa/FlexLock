@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.example.fitnessrepcounter.data.prefs.LockPreferences
 import com.example.fitnessrepcounter.data.supabase.SupabaseRepository
 import com.example.fitnessrepcounter.theme.FitnessRepCounterTheme
 import kotlinx.coroutines.launch
@@ -21,6 +22,15 @@ class MainActivity : ComponentActivity() {
     lifecycleScope.launch {
         val repo = SupabaseRepository()
         repo.signInAnonymously()
+    }
+    
+    val lockPrefs = LockPreferences(this)
+    if (lockPrefs.isLockedToday()) {
+        try {
+            startLockTask()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     enableEdgeToEdge()
