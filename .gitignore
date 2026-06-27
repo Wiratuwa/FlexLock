@@ -13,3 +13,8 @@ supabase/.temp/
 *.apk
 app/app/build/
 **/app/build/
+
+# Exclude AI instructions
+AGENTS.md
+GEMINI.md
+CLAUDE.md
